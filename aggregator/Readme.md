@@ -1,0 +1,1 @@
+It is a multi-module maven project with shared maven module.
