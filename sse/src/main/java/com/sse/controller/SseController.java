@@ -3,24 +3,41 @@ package com.sse.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sse.service.SseService;
 import com.sse.util.ApiResponse;
+import com.sse.util.SseEvent;
+import com.sse.util.StreamingHelper;
 import com.sse.util.Try;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.ReactorClientHttpRequestFactory;
+import org.springframework.http.client.ReactorNettyClientRequestFactory;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/sse")
@@ -38,9 +55,10 @@ public class SseController {
         log.info("sseEmitter");
         sseService.getDataFlux()
                 .publishOn(Schedulers.fromExecutorService(executorService))
-                .doOnNext(data -> log.info("Processing data on thread: {}", Thread.currentThread().getName()))
+                .delayElements(Duration.ofSeconds(1))
+//                .doOnNext(data -> log.info("Processing data on thread: {}", Thread.currentThread().getName()))
                 .subscribe(data -> {
-                    log.info("subscription done");
+//                    log.info("subscription done");
                     try {
                         sseEmitter.send(new ApiResponse<>(data));
                     } catch (Exception e) {
@@ -140,5 +158,26 @@ public class SseController {
             log.info("callable response");
             return new ApiResponse<>("Lokesh");
         };
+    }
+
+    @GetMapping("/readSse")
+    public ResponseEntity<Void> readSse() {
+        log.info("readSse in thread: {}", Thread.currentThread().getName());
+        RestClient restClient = RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory())
+                .baseUrl("http://localhost:8080/sse")
+                .build();
+
+        Stream<SseEvent> stream = restClient.get()
+                .uri("/emitter")
+                .exchange((clientRequest, clientResponse) -> StreamingHelper.getSseStream(clientResponse, true), false);
+        stream.forEach(e -> System.out.println("SSE:: " + e));
+
+        Stream<String> stream2 = restClient.get()
+                .uri("/h2")
+                .exchange((clientRequest, clientResponse) -> StreamingHelper.getStream(clientResponse, true), false);
+        stream2.forEach(e -> System.out.println("S:: " + e));
+
+        return ResponseEntity.ok().build();
     }
 }
