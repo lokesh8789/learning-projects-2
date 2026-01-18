@@ -18,7 +18,7 @@ public class SseService {
         }
         return Flux.fromIterable(list)
                 .map(data -> {
-                    if (data.contains("20")) throw new RuntimeException("wow");
+//                    if (data.contains("20")) throw new RuntimeException("wow");
                     return data;
                 })
                 .delayElements(Duration.ofMillis(100));
